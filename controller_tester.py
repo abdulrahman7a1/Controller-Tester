@@ -1,6 +1,6 @@
 """
-DualSense Tester
-================
+Controller Tester
+=================
 A simple desktop controller tester with a live 2D controller drawing.
 Supports DualSense (PS5), DualShock 4 (PS4), Xbox One and Xbox Series X|S.
 
@@ -16,7 +16,8 @@ Pages (sidebar on the left, or press Tab)
               and axis values, recent presses and a circularity test.
   Settings    General: start with Windows, dark / light mode, stick trails,
               deadzone, button layout, vibration test.
-              Design: pick the controller drawing and its colour.
+              Design: pick the controller, its colour, and the look
+              (Artwork = images in assets/, or the built-in Drawn style).
               Light bar: set the DualSense / DualShock 4 light colour
               (presets, RGB (red, green, blue) sliders, brightness, and
               static / breathing / rainbow effects). Needs pygame-ce 2.5.6+.
@@ -48,9 +49,9 @@ os.environ.setdefault("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1")
 import pygame
 import pygame.gfxdraw
 
-APP_NAME = "DualSense Tester"
-W, H = 1260, 780
-RAIL = 76                 # sidebar width
+APP_NAME = "Controller Tester"
+W, H = 1184, 780
+RAIL = 0                  # no fixed sidebar: the menu button opens a drawer
 CW = W - RAIL             # content width
 DRAW_FPS = 60
 
@@ -178,7 +179,7 @@ DS5 = dict(
                         (186, 114)], 6),
     trigger=catmull_rom([(166, 96), (174, 58), (206, 34), (256, 30), (290, 44), (302, 88)], 6),
     speaker=(500, 309, 16.5, (5, 4)),
-    dpad=(231, 237), dpad_style="arrows", arrow_k=1.08, face=(769, 236), face_style="ps", face_colored=False,
+    dpad=(231, 237), dpad_style="arrows", arrow_k=1.08, face=(769, 236), face_style="ps", face_colored=True,
     face_gap=66, face_r=28,
     stick_l=(362, 356), stick_r=(638, 356), well_r=60, cap_r=45, move=15,
     home=(500, 359), home_r=16,
@@ -277,6 +278,46 @@ XONE = dict(XB_COMMON, name="Xbox One", sub="Xbox One", dpad_style="cross",
                              symbol=(170, 160, 164), stick=(28, 28, 32))),
             ])
 
+# --------------------------------------------------------------------------
+# Image look: the user's own controller artwork in assets/, with live overlays.
+# All positions are in pixels of the artwork file.
+# --------------------------------------------------------------------------
+_BIG_ARROW = [(-30, -92), (30, -92), (34, -84), (34, -44), (0, -14), (-34, -44), (-34, -84)]
+PHOTO = {
+    "ds5": dict(
+        file="ds5.png", w=1072, h=681, family="ps", symbols=False,
+        dpad=(198, 208), dpad_style="arrows",
+        face=dict(triangle=(873, 127), circle=(951, 208), cross=(873, 288), square=(795, 208)), face_r=36,
+        small=dict(create=("cap", (284, 90), 0, 16, 12), options=("cap", (790, 90), 0, 16, 12)),
+        home=(536, 350), home_r=30, misc=("cap", (536, 410), 22, 0, 7),
+        touchpad=[(335, 18), (737, 18), (750, 35), (725, 215), (700, 243), (372, 243), (347, 215), (322, 35)],
+        lightbars=[[(314, 40), (338, 215), (350, 238), (368, 250)], [(758, 40), (734, 215), (722, 238), (704, 250)]],
+        stick_l=(366, 350), stick_r=(707, 350), cap_r=64, well_r=72, well=(26, 27, 31), move=13,
+        bumper=[(128, 44), (134, 16), (160, 5), (240, 3), (266, 10), (268, 26), (200, 30)], trig_x=198,
+    ),
+    "ds4": dict(
+        file="ds4.png", w=1072, h=680, family="ps", symbols=True,
+        dpad=(198, 208), dpad_style="arrows",
+        face=dict(triangle=(873, 127), circle=(951, 208), cross=(873, 288), square=(795, 208)), face_r=36,
+        small=dict(create=("cap", (315, 97), 0, 18, 13), options=("cap", (757, 97), 0, 18, 13)),
+        home=(536, 345), home_r=30, misc=None,
+        touchpad=[(362, 38), (710, 38), (717, 46), (717, 232), (706, 244), (366, 244), (355, 232), (355, 46)],
+        lightbars=[[(378, 44), (694, 44)]],
+        stick_l=(366, 350), stick_r=(707, 350), cap_r=64, well_r=72, well=(22, 23, 26), move=13,
+        bumper=[(134, 40), (140, 18), (165, 8), (240, 6), (266, 12), (268, 30), (200, 32)], trig_x=200,
+    ),
+    "series": dict(
+        file="series.png", w=1072, h=693, family="xbox", symbols=True,
+        dpad=(377, 380), dpad_style="cross", cross=(27, 76),
+        face=dict(triangle=(873, 140), circle=(951, 220), cross=(873, 300), square=(795, 220)), face_r=36,
+        small=dict(create=("cap", (447, 216), 0, 0, 25), options=("cap", (625, 216), 0, 0, 25)),
+        home=(536, 103), home_r=45, misc=("cap", (536, 273), 14, 0, 18),
+        touchpad=None, lightbars=[],
+        stick_l=(222, 210), stick_r=(705, 368), cap_r=64, well_r=73, well=(24, 25, 28), move=12,
+        bumper=[(116, 80), (150, 42), (215, 12), (290, 3), (330, 22), (250, 30), (175, 52)], trig_x=215,
+    ),
+}
+
 MODELS = {"ds5": DS5, "ds4": DS4, "xone": XONE, "series": XSERIES}
 MODEL_ORDER = ["ds5", "ds4", "xone", "series"]
 
@@ -347,6 +388,129 @@ def outline_col(th):
 
 
 # --------------------------------------------------------------------------
+# Shading helpers for the controller art (all results are cached by the app)
+# Note: pygame drawing on a transparent surface replaces pixels, so every
+# translucent layer is drawn on its own surface and then blended with blit().
+# --------------------------------------------------------------------------
+def lighten(c, t):
+    return mix(c, (255, 255, 255), t)
+
+
+def darken(c, t):
+    return mix(c, (0, 0, 0), t)
+
+
+def new_layer(w, h, rgb=(0, 0, 0)):
+    s = pygame.Surface((max(1, int(w)), max(1, int(h))), pygame.SRCALPHA)
+    s.fill((*rgb, 0))  # transparent pixels keep this colour, so blurs don't go grey
+    return s
+
+
+def blur(surf, factor=4.0, passes=2):
+    w, h = surf.get_size()
+    sw, sh = max(1, int(w / factor)), max(1, int(h / factor))
+    for _ in range(passes):
+        surf = pygame.transform.smoothscale(pygame.transform.smoothscale(surf, (sw, sh)), (w, h))
+    return surf
+
+
+def vgradient(w, h, stops, y0=0.0, y1=None):
+    """Opaque vertical gradient. stops = [(t, rgb), ...] spread over rows y0..y1."""
+    w, h = max(1, int(w)), max(1, int(h))
+    y1 = h if y1 is None else y1
+    col = pygame.Surface((1, h), pygame.SRCALPHA)
+    for y in range(h):
+        t = 0.0 if y1 == y0 else min(1.0, max(0.0, (y - y0) / (y1 - y0)))
+        i = 0
+        while i < len(stops) - 2 and stops[i + 1][0] < t:
+            i += 1
+        (ta, ca), (tb, cb) = stops[i], stops[i + 1]
+        u = 0.0 if tb == ta else min(1.0, max(0.0, (t - ta) / (tb - ta)))
+        col.set_at((0, y), (*mix(ca, cb, u), 255))
+    return pygame.transform.scale(col, (w, h))
+
+
+def poly_mask(w, h, pts):
+    m = new_layer(w, h, (255, 255, 255))
+    if len(pts) > 2:
+        pygame.draw.polygon(m, (255, 255, 255, 255), pts)
+    return m
+
+
+def circle_mask(w, h, c, r):
+    m = new_layer(w, h, (255, 255, 255))
+    pygame.draw.circle(m, (255, 255, 255, 255), c, r)
+    return m
+
+
+def apply_mask(layer, mask):
+    layer.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    return layer
+
+
+def gradient_fill(target, mask, stops, y0, y1):
+    w, h = target.get_size()
+    g = vgradient(w, h, stops, y0, y1)
+    target.blit(apply_mask(g, mask), (0, 0))
+
+
+def soft_shadow(target, pts, dy, alpha, factor):
+    w, h = target.get_size()
+    sh = new_layer(w, h)
+    pygame.draw.polygon(sh, (0, 0, 0, alpha), [(x, y + dy) for x, y in pts])
+    target.blit(blur(sh, factor), (0, 0))
+
+
+def inner_shade(target, mask, color, strength, radius):
+    """Soft darkening that fades inward from the outline (gives a rounded, moulded look).
+    Built by blurring the area outside the shape, so there are no seams."""
+    w, h = target.get_size()
+    ov = pygame.Surface((w, h), pygame.SRCALPHA)
+    ov.fill((0, 0, 0, 255))
+    ov.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)  # opaque only outside the shape
+    ov.fill(color, special_flags=pygame.BLEND_RGB_ADD)          # same colour everywhere -> clean blur
+    ov = blur(ov, max(2.0, radius), 2)
+    ov.fill((255, 255, 255, max(0, min(255, int(255 * strength)))), special_flags=pygame.BLEND_RGBA_MULT)
+    target.blit(apply_mask(ov, mask), (0, 0))
+
+
+def soft_glow(target, rect, alpha, mask, color=(255, 255, 255), factor=6):
+    w, h = target.get_size()
+    ov = new_layer(w, h, color)
+    pygame.draw.ellipse(ov, (*color, alpha), rect)
+    ov = blur(ov, factor)
+    target.blit(apply_mask(ov, mask), (0, 0))
+
+
+def edge_line(target, pts, color, alpha, width):
+    w, h = target.get_size()
+    tmp = new_layer(w, h, color)
+    pygame.draw.lines(tmp, (*color, alpha), True, pts, max(1, int(width)))
+    target.blit(tmp, (0, 0))
+
+
+def capsule(a, b, r, n=10):
+    """Polygon for a rounded capsule between points a and b."""
+    (x1, y1), (x2, y2) = a, b
+    ang = math.atan2(y2 - y1, x2 - x1)
+    pts = []
+    for i in range(n + 1):
+        t = ang + math.pi / 2 + math.pi * i / n
+        pts.append((x1 + math.cos(t) * r, y1 + math.sin(t) * r))
+    for i in range(n + 1):
+        t = ang - math.pi / 2 + math.pi * i / n
+        pts.append((x2 + math.cos(t) * r, y2 + math.sin(t) * r))
+    return pts
+
+
+def edge_line_circle(target, c, r, color, alpha, width):
+    w, h = target.get_size()
+    tmp = new_layer(w, h, color)
+    pygame.draw.circle(tmp, (*color, alpha), c, r, max(1, int(width)))
+    target.blit(tmp, (0, 0))
+
+
+# --------------------------------------------------------------------------
 # Fonts: load Windows' own Segoe UI files directly (SysFont often picks a thin
 # or old-looking variant). Falls back to any system font elsewhere.
 # --------------------------------------------------------------------------
@@ -360,7 +524,43 @@ FONT_FILES = {
 }
 
 
+TEXT_SS = 3  # text is drawn 3x larger and scaled down, which gives smooth, even letters at small sizes
+
+
+class SmoothFont:
+    """Wraps a pygame font. pygame has no hinting or sub-pixel options, so small text can look
+    jagged; rendering large and scaling down smoothly avoids that."""
+
+    def __init__(self, big):
+        self.big = big
+
+    def size(self, text):
+        w, h = self.big.size(text)
+        return max(1, round(w / TEXT_SS)), max(1, round(h / TEXT_SS))
+
+    def render(self, text, antialias, color):
+        img = self.big.render(text, True, color).convert_alpha()
+        w, h = img.get_size()
+        return pygame.transform.smoothscale(img, (max(1, round(w / TEXT_SS)), max(1, round(h / TEXT_SS))))
+
+
 def load_font(size, weight="semibold"):
+    return SmoothFont(_load_font(size * TEXT_SS, weight))
+
+
+BUNDLED_FONTS = {"regular": "Inter-Medium.otf", "semibold": "Inter-SemiBold.otf", "bold": "Inter-Bold.otf",
+                 "display": "InterDisplay-Bold.otf"}
+
+
+def _load_font(size, weight="semibold"):
+    try:  # the Inter font shipped in assets/fonts
+        path = resource(os.path.join("assets", "fonts", BUNDLED_FONTS.get(weight, BUNDLED_FONTS["semibold"])))
+        if os.path.exists(path):
+            return pygame.font.Font(path, size)
+    except Exception:
+        pass
+    if weight == "display":
+        weight = "bold"
     for name in FONT_FILES.get(weight, FONT_FILES["semibold"]):
         for d in FONT_DIRS:
             path = os.path.join(d, name)
@@ -379,7 +579,7 @@ SETTINGS_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), 
 SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
 DEFAULTS = {"mode": "dark", "model": "ds5", "auto_model": True, "colours": {}, "trails": True,
             "deadzone": 0.05, "layout": "auto",
-            "tray": True, "notify": True, "led_on": False, "led_color": [0, 90, 255], "led_brightness": 1.0, "led_effect": "static"}
+            "style": "image", "tray": True, "notify": True, "led_on": False, "led_color": [0, 90, 255], "led_brightness": 1.0, "led_effect": "static"}
 
 LED_PRESETS = [("Blue", (0, 90, 255)), ("Red", (255, 20, 30)), ("Green", (0, 220, 70)), ("Purple", (150, 40, 255)),
                ("Pink", (255, 60, 170)), ("Orange", (255, 110, 0)), ("Yellow", (255, 210, 0)),
@@ -446,7 +646,7 @@ class Tray:
         except Exception:
             img = PILImage.new("RGB", (64, 64), (64, 140, 255))
         menu = pystray.Menu(
-            pystray.MenuItem("Open DualSense Tester", lambda *_: self._post(EV_TRAY_OPEN), default=True),
+            pystray.MenuItem("Open Controller Tester", lambda *_: self._post(EV_TRAY_OPEN), default=True),
             pystray.MenuItem("Quit", lambda *_: self._post(EV_TRAY_QUIT)),
         )
         try:
@@ -556,13 +756,14 @@ class App:
         self.content = pygame.Surface((CW, H))
         self.screen = self.content
         self.off = (0, 0)
-        self.f_title = load_font(24, "bold")
+        self.f_title = load_font(24, "display")
         self.f_h = load_font(15, "bold")
         self.f = load_font(15, "semibold")
         self.f_s = load_font(13, "semibold")
         self.f_xs = load_font(12, "semibold")
-        self.f_big = load_font(34, "bold")
-        self.f_ms = load_font(13, "semibold")  # numbers (Segoe UI digits are fixed-width)
+        self.f_big = load_font(34, "display")
+        self.f_ms = load_font(13, "semibold")
+        self.f_menu = load_font(16, "semibold")
         self._text_cache = {}
         self.letter_fonts = {}
 
@@ -577,7 +778,8 @@ class App:
         self.mouse = (0, 0)
         self.toast = ("", 0.0)
         self.view = "controller"
-        self.settings_tab = "general"
+        self.menu_open = False
+        self.menu_t = 0.0
         self.drag = None
         self.slider_rects = {}
         self.led_sent = None
@@ -765,10 +967,13 @@ class App:
 
     def action(self, name):
         s = self.settings
-        if name in ("controller", "details", "settings"):
+        if name in ("controller", "details", "settings", "design"):
             self.view = name
-        elif name.startswith("stab:"):
-            self.settings_tab = name[5:]
+            self.menu_open = False
+        elif name == "menu":
+            self.menu_open = not self.menu_open
+        elif name == "menu_close":
+            self.menu_open = False
         elif name == "colour":
             m = self.model_key()
             s["colours"][m] = (self.colour_index(m) + 1) % len(MODELS[m]["themes"])
@@ -791,6 +996,9 @@ class App:
             s["mode"] = name[5:]
             apply_palette(s["mode"])
             self._text_cache.clear()
+            self.save()
+        elif name.startswith("style:"):
+            s["style"] = name[6:]
             self.save()
         elif name == "tray_opt":
             if not TRAY_AVAILABLE:
@@ -874,13 +1082,16 @@ class App:
             return True
         if e.type == pygame.KEYDOWN:
             if e.key == pygame.K_ESCAPE:
+                if self.menu_open:
+                    self.menu_open = False
+                    return True
                 return False
             keymap = {pygame.K_t: "colour", pygame.K_m: "model", pygame.K_v: "rumble", pygame.K_c: "circ",
                       pygame.K_F1: "layout", pygame.K_r: "reset", pygame.K_UP: "dz+", pygame.K_EQUALS: "dz+",
                       pygame.K_DOWN: "dz-", pygame.K_MINUS: "dz-"}
             if e.key == pygame.K_TAB:
-                order = ["controller", "details", "settings"]
-                self.view = order[(order.index(self.view) + 1) % 3]
+                order = ["controller", "details", "design", "settings"]
+                self.view = order[(order.index(self.view) + 1) % 4]
             elif e.key in keymap:
                 self.action(keymap[e.key])
         elif e.type == pygame.MOUSEMOTION:
@@ -1103,97 +1314,361 @@ class App:
         aa_circle(self.screen, LINE if not (hover or self.drag == key) else MUTED, knob, 10)
         aa_circle(self.screen, (255, 255, 255), knob, 8)
 
-    # ---------------- controller drawing (flat 2D illustration) ----------------
-    def _canvas(self, s):
-        k = s * 2  # draw at 2x, then smooth-scale down for clean edges
-        return k, max(2, int(DW * k)), max(2, int(DH * k))
-
-    def _finish(self, surf, s):
-        return pygame.transform.smoothscale(surf, (max(1, int(DW * s)), max(1, int(DH * s))))
-
-    @staticmethod
-    def _stroke(surf, color, pts, width, closed=True):
-        """Thick outline with round joins (used on the 2x canvas)."""
-        width = max(1, int(round(width)))
-        pygame.draw.lines(surf, color, closed, pts, width)
-        if width > 2:
-            for p in pts:
-                pygame.draw.circle(surf, color, p, width / 2)
+    # ---------------- controller drawing (shaded 2D illustration) ----------------
+    def cached(self, key, build):
+        v = self.body_cache.get(key)
+        if v is None:
+            if len(self.body_cache) > 600:
+                self.body_cache.clear()
+            v = build()
+            self.body_cache[key] = v
+        return v
 
     def body_surface(self, model, s):
         tname, th = self.theme_for(model)
-        key = ("body", model, tname, round(s, 3), SHADOW)
-        if key in self.body_cache:
-            return self.body_cache[key]
+        return self.cached(("body", model, tname, round(s, 3), SHADOW), lambda: self._build_body(model, th, s))
+
+    def _build_body(self, model, th, s):
         spec = MODELS[model]
-        k, w, h = self._canvas(s)
+        k = s * 2  # draw at 2x, then smooth-scale down for clean edges
+        w, h = max(2, int(DW * k)), max(2, int(DH * k))
         P = lambda pts: [(x * k, y * k) for x, y in pts]
-        lw = 3.4 * k
-        ol = outline_col(th)
-        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        body = th["body"]
+        light = lum(body) > 150
+        surf = new_layer(w, h)
+        B = P(spec["body"])
 
-        # flat ground shadow, like a sticker illustration
-        pygame.draw.ellipse(surf, (0, 0, 0, SHADOW // 2), (230 * k, 636 * k, 540 * k, 20 * k))
+        # shadow under the controller
+        soft_shadow(surf, B, 22 * k, min(255, SHADOW + 70), 14)
 
-        pygame.draw.polygon(surf, th["body"], P(spec["body"]))
+        # moulded body: vertical gradient + soft rim shading + top sheen
+        bmask = poly_mask(w, h, B)
+        gradient_fill(surf, bmask, [(0, lighten(body, 0.10 if light else 0.14)), (0.45, body),
+                                    (1, darken(body, 0.16 if light else 0.30))], 90 * k, 650 * k)
+        inner_shade(surf, bmask, darken(body, 0.55) if light else (0, 0, 0), 0.38 if light else 0.6, 22 * k)
+        soft_glow(surf, (190 * k, 70 * k, 620 * k, 190 * k), 120 if light else 45, bmask)
+
+        base = body
         if spec["panel"] and th.get("panel"):
-            pnl = pygame.Surface((w, h), pygame.SRCALPHA)
-            pygame.draw.polygon(pnl, th["panel"], P(spec["panel"]))
-            self._stroke(pnl, ol, P(spec["panel"]), lw * 0.8)
-            mask = pygame.Surface((w, h), pygame.SRCALPHA)
-            pygame.draw.polygon(mask, (255, 255, 255, 255), P(spec["body"]))
-            pnl.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-            surf.blit(pnl, (0, 0))
-        base = th["panel"] if th.get("panel") else th["body"]
+            pnl = th["panel"]
+            base = pnl
+            pm = apply_mask(poly_mask(w, h, P(spec["panel"])), bmask)
+            gradient_fill(surf, pm, [(0, lighten(pnl, 0.14)), (0.5, pnl), (1, darken(pnl, 0.35))], 280 * k, 650 * k)
+            inner_shade(surf, pm, (0, 0, 0), 0.5, 12 * k)
+            soft_glow(surf, (330 * k, 280 * k, 340 * k, 70 * k), 30, pm)
+
+        def dish(c, r, col):
+            """Concave recess: darker at the top, lighter at the bottom."""
+            m = circle_mask(w, h, (c[0] * k, c[1] * k), r * k)
+            gradient_fill(surf, m, [(0, darken(col, 0.38)), (1, lighten(col, 0.06))], (c[1] - r) * k, (c[1] + r) * k)
+            edge_line_circle(surf, (c[0] * k, c[1] * k), r * k, lighten(col, 0.25), 90, 1.6 * k)
 
         if spec["recess"]:
             for c in (spec["dpad"], spec["face"]):
-                rr = spec.get("recess_r", 84)
-                pygame.draw.circle(surf, mix(th["body"], (0, 0, 0), 0.14), (c[0] * k, c[1] * k), rr * k)
-                pygame.draw.circle(surf, ol, (c[0] * k, c[1] * k), rr * k, max(1, int(lw * 0.6)))
+                dish(c, spec.get("recess_r", 84), darken(body, 0.10))
+        if spec["dpad_style"] == "disc":
+            dish(spec["dpad"], 64, darken(body, 0.12) if light else lighten(body, 0.04))
+
         if spec["touchpad"]:
-            pygame.draw.polygon(surf, th["touch"], P(spec["touchpad"]))
-            self._stroke(surf, ol, P(spec["touchpad"]), lw * 0.85)
+            T = P(spec["touchpad"])
+            tm = poly_mask(w, h, T)
+            ys = [y for _, y in spec["touchpad"]]
+            gradient_fill(surf, tm, [(0, lighten(th["touch"], 0.08)), (1, darken(th["touch"], 0.08))],
+                          min(ys) * k, max(ys) * k)
+            inner_shade(surf, tm, (0, 0, 0), 0.30, 6 * k)
+            edge_line(surf, T, darken(th["touch"], 0.35), 110, 1.5 * k)
+
         if spec["speaker"]:
             sx, sy, sp, counts = spec["speaker"]
             for row, n in enumerate(counts):
                 for i in range(n):
                     x = sx + (i - (n - 1) / 2) * sp
-                    pygame.draw.circle(surf, mix(base, (128, 128, 128), 0.45), (x * k, (sy + row * sp * 0.8) * k), 3.4 * k)
-        if spec["dpad_style"] == "disc":
-            c = spec["dpad"]
-            pygame.draw.circle(surf, mix(th["body"], (0, 0, 0), 0.10), (c[0] * k, c[1] * k), 64 * k)
-            pygame.draw.circle(surf, ol, (c[0] * k, c[1] * k), 64 * k, max(1, int(lw * 0.7)))
+                    pygame.draw.circle(surf, lighten(base, 0.18), (x * k, (sy + row * sp * 0.8 + 1.2) * k), 3.6 * k)
+                    pygame.draw.circle(surf, darken(base, 0.55), (x * k, (sy + row * sp * 0.8) * k), 3.4 * k)
+
         for c in (spec["stick_l"], spec["stick_r"]):
-            wr = spec.get("well_r", 56)
-            pygame.draw.circle(surf, mix(base, (0, 0, 0), 0.22), (c[0] * k, c[1] * k), wr * k)
-            pygame.draw.circle(surf, ol, (c[0] * k, c[1] * k), wr * k, max(1, int(lw * 0.7)))
+            dish(c, spec.get("well_r", 56), base)
 
-        self._stroke(surf, ol, P(spec["body"]), lw)
-        out = self._finish(surf, s)
-        self.body_cache[key] = out
-        return out
+        edge_line(surf, B, darken(body, 0.45 if light else 0.6), 130, 1.4 * k)
+        return pygame.transform.smoothscale(surf, (max(1, int(DW * s)), max(1, int(DH * s))))
 
-    def part_surface(self, model, s, part, side, state):
-        """Cached bumper / trigger art. state: 'off' or 'on'. side 'L' or 'R' (mirror)."""
-        tname, th = self.theme_for(model)
-        key = ("part", model, tname, round(s, 3), part, side, state, ACCENT)
-        if key in self.body_cache:
-            return self.body_cache[key]
-        spec = MODELS[model]
-        k, w, h = self._canvas(s)
-        pts = [(x * k, y * k) for x, y in spec[part]]
-        surf = pygame.Surface((w, h), pygame.SRCALPHA)
-        fill = ACCENT if state == "on" else mix(th["body"], (0, 0, 0), 0.24 if part == "trigger" else 0.08)
-        pygame.draw.polygon(surf, fill, pts)
-        self._stroke(surf, outline_col(th), pts, 3.0 * k)
-        out = self._finish(surf, s)
-        if side == "R":
-            out = pygame.transform.flip(out, True, False)
-        self.body_cache[key] = out
-        return out
+    # ---- small cached sprites ----
+    def dome(self, r, base, gloss=1.0):
+        """Rounded button with shading and a little shine. Returns a surface centred on the button."""
+        r = max(2.0, r)
+        key = ("dome", round(r, 1), tuple(base), gloss, SHADOW)
+
+        def build():
+            R = r * 2
+            size = int(R * 2 + R * 1.2)
+            C = size / 2
+            sp = new_layer(size, size)
+            sh = new_layer(size, size)
+            pygame.draw.circle(sh, (0, 0, 0, min(255, SHADOW + 60)), (C, C + R * 0.16), R)
+            sp.blit(blur(sh, 2.5), (0, 0))
+            dm = new_layer(size, size)
+            n = max(8, min(40, int(R / 1.2)))
+            for i in range(n):
+                t = i / (n - 1)
+                col = mix(darken(base, 0.30), lighten(base, 0.22 * gloss + 0.04), t ** 0.85)
+                pygame.draw.circle(dm, (*col, 255), (C - R * 0.16 * t, C - R * 0.24 * t), R * (1 - 0.82 * t))
+            sp.blit(dm, (0, 0))
+            hl = new_layer(size, size, (255, 255, 255))
+            spec_a = int((90 if lum(base) > 120 else 55) * gloss)
+            pygame.draw.ellipse(hl, (255, 255, 255, spec_a), (C - R * 0.56, C - R * 0.88, R * 1.12, R * 0.50))
+            sp.blit(apply_mask(blur(hl, 2.2, 1), circle_mask(size, size, (C, C), R)), (0, 0))
+            edge_line_circle(sp, (C, C), R, darken(base, 0.45), 120, max(1.0, R * 0.05))
+            return pygame.transform.smoothscale(sp, (max(1, size // 2), max(1, size // 2)))
+        return self.cached(key, build)
+
+    def halo(self, r, color):
+        key = ("halo", round(r, 1), tuple(color))
+
+        def build():
+            size = int(r * 4)
+            g = new_layer(size, size, color)
+            pygame.draw.circle(g, (*color, 150), (size / 2, size / 2), r * 1.12)
+            return blur(g, 3)
+        return self.cached(key, build)
+
+    def stick_cap(self, r, color):
+        key = ("stick", round(r, 1), tuple(color), SHADOW)
+
+        def build():
+            R = r * 2
+            size = int(R * 2 + R * 1.0)
+            C = size / 2
+            sp = new_layer(size, size)
+            sh = new_layer(size, size)
+            pygame.draw.circle(sh, (0, 0, 0, min(255, SHADOW + 90)), (C, C + R * 0.14), R)
+            sp.blit(blur(sh, 2.5), (0, 0))
+            dm = new_layer(size, size)
+            n = max(8, min(36, int(R / 1.2)))
+            for i in range(n):  # convex rim
+                t = i / (n - 1)
+                pygame.draw.circle(dm, (*mix(darken(color, 0.30), lighten(color, 0.20), t), 255),
+                                   (C - R * 0.06 * t, C - R * 0.10 * t), R * (1 - 0.25 * t))
+            for i in range(n):  # concave thumb area
+                t = i / (n - 1)
+                pygame.draw.circle(dm, (*mix(darken(color, 0.22), lighten(color, 0.10), t), 255),
+                                   (C + R * 0.10 * t, C + R * 0.14 * t), R * 0.70 * (1 - 0.55 * t))
+            sp.blit(dm, (0, 0))
+            for rr in (0.80, 0.88):  # grip ring texture
+                edge_line_circle(sp, (C, C), R * rr, darken(color, 0.35), 70, max(1.0, R * 0.025))
+            edge_line_circle(sp, (C, C), R, darken(color, 0.55), 140, max(1.0, R * 0.04))
+            return pygame.transform.smoothscale(sp, (max(1, size // 2), max(1, size // 2)))
+        return self.cached(key, build)
+
+    def shape_sprite(self, key, pts, s, top, bottom, gloss=0.6):
+        """Shaded polygon sprite. pts in design units. Returns (surface, (x, y) offset in px at scale s)."""
+        full_key = ("shape", key, round(s, 3), tuple(top), tuple(bottom), SHADOW)
+
+        def build():
+            k = s * 2
+            xs, ys = [x for x, _ in pts], [y for _, y in pts]
+            pad = 14
+            x0, y0 = min(xs) - pad, min(ys) - pad
+            w, h = int((max(xs) - x0 + pad) * k), int((max(ys) - y0 + pad + 6) * k)
+            Q = [((x - x0) * k, (y - y0) * k) for x, y in pts]
+            sp = new_layer(w, h)
+            soft_shadow(sp, Q, 4 * k, min(255, SHADOW + 50), 3)
+            m = poly_mask(w, h, Q)
+            gradient_fill(sp, m, [(0, top), (1, bottom)], min(y for _, y in Q), max(y for _, y in Q))
+            qx = [x for x, _ in Q]
+            qy = [y for _, y in Q]
+            soft_glow(sp, (min(qx) + (max(qx) - min(qx)) * 0.15, min(qy) - (max(qy) - min(qy)) * 0.1,
+                           (max(qx) - min(qx)) * 0.7, (max(qy) - min(qy)) * 0.45), int(90 * gloss), m, factor=3)
+            edge_line(sp, Q, darken(bottom, 0.45), 130, max(1, 1.3 * k))
+            out = pygame.transform.smoothscale(sp, (max(1, w // 2), max(1, h // 2)))
+            return out, (x0 * s, y0 * s)
+        return self.cached(full_key, build)
+
+    def glow_line(self, key, pts, s):
+        """White blurred stroke used for the light-bar glow; tinted per frame. Returns (surface, offset)."""
+        def build():
+            pad = 24
+            x0, y0 = min(x for x, _ in pts) - pad, min(y for _, y in pts) - pad
+            w = max(2, int((max(x for x, _ in pts) - x0 + pad) * s))
+            h = max(2, int((max(y for _, y in pts) - y0 + pad) * s))
+            g = new_layer(w, h, (255, 255, 255))
+            pygame.draw.lines(g, (255, 255, 255, 210), False, [((x - x0) * s, (y - y0) * s) for x, y in pts],
+                              max(2, int(14 * s)))
+            return blur(g, 3), (x0 * s, y0 * s)
+        return self.cached(("glow", key, round(s, 3)), build)
+
+    def blit_c(self, sprite, c):
+        r = sprite.get_rect()
+        r.center = ipt(c)
+        self.screen.blit(sprite, r)
+
+    # ---- image look ----
+    def photo(self, model):
+        """The artwork for this model (original size), or None if it has none / the file is missing."""
+        if model not in PHOTO:
+            return None
+        key = ("photo_src", model)
+        if key not in self.body_cache:
+            try:
+                img = pygame.image.load(resource(os.path.join("assets", PHOTO[model]["file"]))).convert_alpha()
+            except Exception:
+                img = False
+            self.body_cache[key] = img
+        return self.body_cache[key] or None
+
+    def use_photo(self, model):
+        return self.settings.get("style") == "image" and self.photo(model) is not None
+
+    def draw_photo_controller(self, ox, oy, s, st, model, mini=False):
+        ph = PHOTO[model]
+        src = self.photo(model)
+        scr = self.screen
+        k = s * 0.86 * DW / ph["w"]
+        iw, ih = max(2, int(ph["w"] * k)), max(2, int(ph["h"] * k))
+        x0 = ox + (DW * s - iw) / 2
+        y0 = oy + (DH * s - ih) / 2 + 26 * s
+        P = lambda x, y: (x0 + x * k, y0 + y * k)
+        pr = st["pressed"] if st else {}
+        on = lambda n: pr.get(n, False)
+        connected = st is not None
+        xbox = ph["family"] == "xbox"
+        white = (255, 255, 255)
+        mirror = lambda pts: [(ph["w"] - x, y) for x, y in pts]
+
+        def build_base():
+            return pygame.transform.smoothscale(src, (iw, ih))
+
+        def build_shadow():
+            sh = new_layer(iw, int(60 * k) + 4)
+            pygame.draw.ellipse(sh, (0, 0, 0, min(255, SHADOW + 40)), (iw * 0.2, 12 * k, iw * 0.6, 26 * k))
+            return blur(sh, 4)
+
+        def build_cap(c):
+            r = ph["cap_r"]
+            sub = src.subsurface(pygame.Rect(int(c[0] - r), int(c[1] - r), 2 * r, 2 * r)).copy()
+            apply_mask(sub, circle_mask(2 * r, 2 * r, (r, r), r - 1))
+            d = max(2, int(2 * r * k))
+            return pygame.transform.smoothscale(sub, (d, d))
+
+        # trigger gauges above the shoulders
+        for side, val, lbl in (("L", st["l2"] if st else 0.0, "LT" if xbox else "L2"),
+                               ("R", st["r2"] if st else 0.0, "RT" if xbox else "R2")):
+            tx = ph["trig_x"] if side == "L" else ph["w"] - ph["trig_x"]
+            gx, gy = P(tx - 52, -58)
+            R = pygame.Rect(int(gx), int(gy), max(4, int(104 * k)), max(4, int(40 * k)))
+            rrect(scr, SURFACE_2, R, R.h // 2.5)
+            if val > 0.002:
+                clip = scr.get_clip()
+                fh = max(2, int(R.h * val))
+                scr.set_clip(pygame.Rect(R.x, R.bottom - fh, R.w, fh).clip(clip))
+                rrect(scr, ACCENT, R, R.h // 2.5)
+                scr.set_clip(clip)
+            if not mini:
+                txt = f"{lbl}  {val * 100:.0f}%" if val > 0.005 else lbl
+                self.text(self.f_s, txt, (R.centerx, R.y - 12), ACCENT if val > 0.005 else MUTED, "center")
+
+        scr.blit(self.cached(("photo_shadow", model, round(k, 4), SHADOW), build_shadow), ipt((x0, y0 + ih - 30 * k)))
+        scr.blit(self.cached(("photo", model, round(k, 4)), build_base), ipt((x0, y0)))
+
+        # bumpers
+        for name, pts in (("l1", ph["bumper"]), ("r1", mirror(ph["bumper"]))):
+            if on(name):
+                aa_poly(scr, (*ACCENT, 215), [P(x, y) for x, y in pts])
+
+        # touchpad and light bar
+        if ph["touchpad"] and on("touchpad"):
+            aa_poly(scr, (*ACCENT, 100), [P(x, y) for x, y in ph["touchpad"]])
+        if connected and ph["lightbars"]:
+            lb = self.led_now if self.settings["led_on"] else ACCENT
+            if max(lb) > 8:
+                for pts in ph["lightbars"]:
+                    q = [P(x, y) for x, y in pts]
+                    aa_polyline(scr, (*lb, 60), q, 11 * k)
+                    aa_polyline(scr, lighten(lb, 0.35), q, 3.4 * k)
+
+        def cap_shape(shape):
+            _, c, hx, hy, r = shape
+            return capsule(P(c[0] - hx, c[1] - hy), P(c[0] + hx, c[1] + hy), r * k)
+
+        # small buttons, home, mic / share
+        for name, shape in ph["small"].items():
+            if on(name):
+                aa_poly(scr, (*ACCENT, 215), cap_shape(shape))
+        if on("ps"):
+            self.blit_c(self.halo(ph["home_r"] * k, ACCENT), P(*ph["home"]))
+            aa_circle(scr, (*ACCENT, 150), P(*ph["home"]), ph["home_r"] * k)
+        if ph["misc"] and on("mic"):
+            aa_poly(scr, (*(ACCENT if xbox else MIC_ORANGE), 230), cap_shape(ph["misc"]))
+
+        # d-pad
+        dc = ph["dpad"]
+        for name, ang in (("up", 0), ("right", 90), ("down", 180), ("left", 270)):
+            if not on(name):
+                continue
+            if ph["dpad_style"] == "arrows":
+                shape = rotate(_BIG_ARROW, ang)
+            else:
+                a, l = ph["cross"]
+                shape = rotate([(-a, -l), (a, -l), (a, -a), (-a, -a)], ang)
+            aa_poly(scr, (*ACCENT, 200), [P(dc[0] + x, dc[1] + y) for x, y in shape])
+
+        # face buttons
+        for name, pos in ph["face"].items():
+            c = P(*pos)
+            r = ph["face_r"] * k
+            p = on(name)
+            col = XB_LETTER[name] if xbox else ACCENT
+            if p:
+                self.blit_c(self.halo(r, col), c)
+                aa_circle(scr, (*col, 175 if not ph["symbols"] else 235), c, r - 1)
+            if not ph["symbols"]:
+                continue  # the artwork already shows the symbols
+            if xbox:
+                if mini:
+                    aa_circle(scr, XB_LETTER[name], c, r * 0.35)
+                else:
+                    self.text(self.letter_font(38 * k), XB_NAMES[name], (c[0], c[1] - 1),
+                              white if p else XB_LETTER[name], "center")
+                continue
+            sym = white if p else PS_SYMBOL[name]
+            sw = max(1.3, 4.2 * k)
+            z = r * 0.46
+            cx, cy = c
+            if name == "triangle":
+                v = [(cx, cy - z * 1.05), (cx + z, cy + z * 0.7), (cx - z, cy + z * 0.7)]
+                aa_polyline(scr, sym, v + [v[0]], sw)
+            elif name == "circle":
+                aa_ring(scr, sym, c, z, max(1, int(round(sw))))
+            elif name == "cross":
+                aa_line(scr, sym, (cx - z * 0.9, cy - z * 0.9), (cx + z * 0.9, cy + z * 0.9), sw)
+                aa_line(scr, sym, (cx + z * 0.9, cy - z * 0.9), (cx - z * 0.9, cy + z * 0.9), sw)
+            else:
+                q = z * 0.8
+                v = [(cx - q, cy - q), (cx + q, cy - q), (cx + q, cy + q), (cx - q, cy + q)]
+                aa_polyline(scr, sym, v + [v[0]], sw)
+
+        # sticks: cover the painted stick, then draw its cap where the stick really is
+        for key, c, (sx, sy), click in (("L", ph["stick_l"], (st["lx"], st["ly"]) if st else (0, 0), "l3"),
+                                        ("R", ph["stick_r"], (st["rx"], st["ry"]) if st else (0, 0), "r3")):
+            active = on(click) or math.hypot(sx, sy) > self.deadzone
+            if abs(sx) > 0.004 or abs(sy) > 0.004 or active:
+                aa_circle(scr, ph["well"], P(*c), ph["well_r"] * k)
+                cc = P(c[0] + sx * ph["move"], c[1] + sy * ph["move"])
+                if active:
+                    self.blit_c(self.halo(ph["cap_r"] * k, ACCENT), cc)
+                self.blit_c(self.cached(("photo_cap", model, key, round(k, 4)), lambda c=c: build_cap(c)), cc)
+                if active:
+                    aa_ring(scr, ACCENT, cc, ph["cap_r"] * k, max(1, int(3 * k + 0.5)))
+                if on(click):
+                    aa_circle(scr, ACCENT, cc, 14 * k)
+
+        if not connected and not mini:
+            cx, my = ox + DW * s / 2, y0 + ih * 0.80
+            self.text(self.f_h, "Waiting for a controller", (cx, my), TEXT, "center")
+            self.text(self.f_s, "Connect with USB or Bluetooth", (cx, my + 22), MUTED, "center")
 
     def draw_controller(self, ox, oy, s, st, model, mini=False):
+        if self.use_photo(model):
+            return self.draw_photo_controller(ox, oy, s, st, model, mini)
         spec = MODELS[model]
         th = self.theme_for(model)[1]
         scr = self.screen
@@ -1204,32 +1679,36 @@ class App:
         sym_off = th["symbol"]
         xbox = spec["family"] == "xbox"
         white = (255, 255, 255)
-        ol = outline_col(th)
-        lw = max(1.0, 2.6 * s)
-        base = th["panel"] if th.get("panel") else th["body"]
+        body = th["body"]
+        light = lum(body) > 150
+        base = th["panel"] if th.get("panel") else body
         o = ipt((ox, oy))
+        acc_top, acc_bot = lighten(ACCENT, 0.25), darken(ACCENT, 0.15)
 
-        def outlined_circle(c, r, fill):
-            aa_circle(scr, ol, c, r)
-            aa_circle(scr, fill, c, r - lw)
+        def shape(key, pts, top, bottom, gloss=0.6):
+            sp, (dx, dy) = self.shape_sprite((model, key), pts, s, top, bottom, gloss)
+            scr.blit(sp, ipt((ox + dx, oy + dy)))
+            return sp, (dx, dy)
 
-        def outlined_poly(pts, fill):
-            aa_poly(scr, fill, pts)
-            aa_polyline(scr, ol, pts + [pts[0]], lw)
-
-        # triggers (behind) and bumpers, then the body on top
+        # triggers (behind), bumpers, then the body
+        sh_top, sh_bot = (lighten(body, 0.05), darken(body, 0.28)) if light else (lighten(body, 0.12), darken(body, 0.35))
         ys = [y for _, y in spec["trigger"]]
         t_top, t_bot = min(ys), max(ys)
         for side, val in (("L", st["l2"] if st else 0.0), ("R", st["r2"] if st else 0.0)):
-            scr.blit(self.part_surface(model, s, "trigger", side, "off"), o)
+            pts = spec["trigger"] if side == "L" else [(DW - x, y) for x, y in spec["trigger"]]
+            shape("trig" + side, pts, darken(sh_top, 0.08), darken(sh_bot, 0.12), 0.4)
             if val > 0.002:
                 y_cut = oy + (t_bot - (t_bot - t_top) * val) * s
                 clip = scr.get_clip()
-                scr.set_clip(pygame.Rect(0, int(y_cut), scr.get_width(), int(oy + t_bot * s - y_cut) + 2).clip(clip))
-                scr.blit(self.part_surface(model, s, "trigger", side, "on"), o)
+                scr.set_clip(pygame.Rect(0, int(y_cut), scr.get_width(), int(oy + (t_bot + 10) * s - y_cut) + 2).clip(clip))
+                shape("trig" + side, pts, acc_top, acc_bot, 0.6)
                 scr.set_clip(clip)
         for side, name in (("L", "l1"), ("R", "r1")):
-            scr.blit(self.part_surface(model, s, "bumper", side, "on" if on(name) else "off"), o)
+            pts = spec["bumper"] if side == "L" else [(DW - x, y) for x, y in spec["bumper"]]
+            if on(name):
+                shape("bump" + side, pts, acc_top, acc_bot)
+            else:
+                shape("bump" + side, pts, sh_top, sh_bot)
         scr.blit(self.body_surface(model, s), o)
 
         if not mini:  # trigger labels above the triggers
@@ -1243,57 +1722,67 @@ class App:
         # touchpad press
         if spec["touchpad"] and on("touchpad"):
             c = (500, sum(y for _, y in spec["touchpad"]) / len(spec["touchpad"]))
-            aa_poly(scr, mix(th["touch"], ACCENT, 0.6),
-                    [P(c[0] + (x - c[0]) * 0.975, c[1] + (y - c[1]) * 0.95) for x, y in spec["touchpad"]])
+            aa_poly(scr, (*ACCENT, 90), [P(c[0] + (x - c[0]) * 0.985, c[1] + (y - c[1]) * 0.97)
+                                         for x, y in spec["touchpad"]])
 
-        # light bars
-        if connected and self.settings["led_on"]:
-            lb = self.led_now
-        else:
-            lb = ACCENT if connected else mix(base, (128, 128, 128), 0.4)
-        for pts in spec["lightbars"]:
-            aa_polyline(scr, lb, [P(x, y) for x, y in pts], 3.4 * s)
+        # light bars with glow
+        lb = (self.led_now if self.settings["led_on"] else ACCENT) if connected else None
+        for i, pts in enumerate(spec["lightbars"]):
+            if lb is not None and max(lb) > 8:
+                g, (gx, gy) = self.glow_line((model, i), pts, s)
+                g = g.copy()
+                g.fill((*lb, 255), special_flags=pygame.BLEND_RGBA_MULT)
+                scr.blit(g, ipt((ox + gx, oy + gy)))
+                aa_polyline(scr, lighten(lb, 0.35), [P(x, y) for x, y in pts], 2.6 * s)
+            else:
+                aa_polyline(scr, darken(body, 0.25) if light else lighten(body, 0.12), [P(x, y) for x, y in pts],
+                            2.6 * s)
 
-        # select / start
+        # select / start (Create & Options, Share & Options, View & Menu)
         for c, name, tilt in ((spec["select"], "create", 1), (spec["start"], "options", -1)):
-            fill = ACCENT if on(name) else th["btn"]
+            p = on(name)
             if spec["small_style"] == "slant":
                 hl = spec.get("small_len", 30) / 2 - 7
-                a, b = P(c[0] - 5 * tilt, c[1] - hl), P(c[0] + 5 * tilt, c[1] + hl)
-                aa_line(scr, ol, a, b, 15 * s + 2 * lw)
-                aa_line(scr, fill, a, b, 15 * s)
+                pts = capsule((c[0] - 5 * tilt, c[1] - hl), (c[0] + 5 * tilt, c[1] + hl), 8)
+                if p:
+                    shape("sel_" + name, pts, acc_top, acc_bot)
+                else:
+                    shape("sel_" + name, pts, lighten(th["btn"], 0.10), darken(th["btn"], 0.18))
             else:
-                outlined_circle(P(*c), 15 * s, fill)
+                if p:
+                    self.blit_c(self.halo(15 * s, ACCENT), P(*c))
+                self.blit_c(self.dome(15 * s, ACCENT if p else th["btn"]), P(*c))
                 if not mini:
-                    g = white if on(name) else sym_off
+                    g = white if p else sym_off
                     x0, y0 = P(*c)
                     t = max(1, int(1.6 * s + 0.5))
-                    if name == "create":  # View: two overlapping squares
+                    if name == "create":
                         rrect(scr, g, (x0 - 6 * s, y0 - 5 * s, 8 * s, 7 * s), 1, t)
                         rrect(scr, g, (x0 - 2 * s, y0 - 1 * s, 8 * s, 7 * s), 1, t)
-                    else:  # Menu: three lines
+                    else:
                         for dy in (-4, 0, 4):
                             pygame.draw.line(scr, g, ipt((x0 - 5 * s, y0 + dy * s)), ipt((x0 + 5 * s, y0 + dy * s)), t)
 
         # d-pad
         dc = spec["dpad"]
+        btn_top, btn_bot = lighten(th["btn"], 0.14), darken(th["btn"], 0.20)
         if spec["dpad_style"] == "arrows":
+            ak = spec.get("arrow_k", 1.0)
             for name, ang in (("up", 0), ("right", 90), ("down", 180), ("left", 270)):
                 p = on(name)
-                ak = spec.get("arrow_k", 1.0)
-                outlined_poly([P(dc[0] + x * ak, dc[1] + y * ak) for x, y in rotate(ARROW_UP, ang)],
-                              ACCENT if p else th["btn"])
+                pts = [(dc[0] + x * ak, dc[1] + y * ak) for x, y in rotate(ARROW_UP, ang)]
+                shape("dpad_" + name, pts, acc_top if p else btn_top, acc_bot if p else btn_bot)
                 tip = rotate([(0, -58 * ak), (-6 * ak, -49 * ak), (6 * ak, -49 * ak)], ang)
                 aa_poly(scr, white if p else sym_off, [P(dc[0] + x, dc[1] + y) for x, y in tip])
         else:
-            a, l = spec.get("cross", (16, 46))  # half arm width, arm length
+            a, l = spec.get("cross", (16, 46))
             cross = [(-a, -l), (a, -l), (a, -a), (l, -a), (l, a), (a, a), (a, l), (-a, l), (-a, a), (-l, a),
                      (-l, -a), (-a, -a)]
-            outlined_poly([P(dc[0] + x, dc[1] + y) for x, y in cross], th["btn"])
+            shape("cross", [(dc[0] + x, dc[1] + y) for x, y in cross], btn_top, btn_bot, 0.5)
             for name, ang in (("up", 0), ("right", 90), ("down", 180), ("left", 270)):
-                arm = rotate([(-a + 2, -l + 2), (a - 2, -l + 2), (a - 2, -a), (-a + 2, -a)], ang)
                 if on(name):
-                    aa_poly(scr, ACCENT, [P(dc[0] + x, dc[1] + y) for x, y in arm])
+                    arm = rotate([(-a + 3, -l + 3), (a - 3, -l + 3), (a - 3, -a), (-a + 3, -a)], ang)
+                    aa_poly(scr, (*ACCENT, 220), [P(dc[0] + x, dc[1] + y) for x, y in arm])
                 tip = rotate([(0, -l + 10), (-6, -l + 19), (6, -l + 19)], ang)
                 aa_poly(scr, white if on(name) else sym_off, [P(dc[0] + x, dc[1] + y) for x, y in tip])
 
@@ -1305,14 +1794,18 @@ class App:
             p = on(name)
             if xbox:
                 col = XB_LETTER[name]
-                outlined_circle(c, r, col if p else th["btn"])
+                if p:
+                    self.blit_c(self.halo(r, col), c)
+                self.blit_c(self.dome(r, col if p else th["btn"], 0.9), c)
                 if mini:
                     aa_circle(scr, col, c, r * 0.4)
                 else:
                     self.text(self.letter_font(24 * s), XB_NAMES[name], (c[0], c[1] - 1), white if p else col, "center")
                 continue
+            if p:
+                self.blit_c(self.halo(r, ACCENT), c)
             fill = ACCENT if p else th["btn"]
-            outlined_circle(c, r, fill)
+            self.blit_c(self.dome(r, fill), c)
             sym = white if p else (PS_SYMBOL[name] if spec["face_colored"] else sym_off)
             sw = max(1.4, 2.6 * s)
             z = r * 0.42
@@ -1321,8 +1814,7 @@ class App:
                 v = [(cx, cy - z * 1.05), (cx + z, cy + z * 0.7), (cx - z, cy + z * 0.7)]
                 aa_polyline(scr, sym, v + [v[0]], sw)
             elif name == "circle":
-                aa_circle(scr, sym, c, z)
-                aa_circle(scr, fill, c, z - sw)
+                aa_ring(scr, sym, c, z, max(1, int(round(sw))))
             elif name == "cross":
                 aa_line(scr, sym, (cx - z * 0.9, cy - z * 0.9), (cx + z * 0.9, cy + z * 0.9), sw)
                 aa_line(scr, sym, (cx + z * 0.9, cy - z * 0.9), (cx - z * 0.9, cy + z * 0.9), sw)
@@ -1338,29 +1830,38 @@ class App:
             mv, cr = spec.get("move", 20), spec.get("cap_r", 40)
             cx, cy = b[0] + sx * mv * s, b[1] + sy * mv * s
             active = on(click) or math.hypot(sx, sy) > self.deadzone
-            aa_circle(scr, ACCENT if active else ol, (cx, cy), cr * s + (1.5 if active else 0))
-            aa_circle(scr, th["stick"], (cx, cy), cr * s - lw)
-            aa_ring(scr, mix(th["stick"], (128, 128, 128), 0.35), (cx, cy), cr * 0.68 * s, max(1, int(1.6 * s + 0.5)))
+            if active:
+                self.blit_c(self.halo(cr * s, ACCENT), (cx, cy))
+            self.blit_c(self.stick_cap(cr * s, th["stick"]), (cx, cy))
+            if active:
+                aa_ring(scr, ACCENT, (cx, cy), cr * s + 1, max(1, int(2 * s + 0.5)))
             if on(click):
-                aa_circle(scr, ACCENT, (cx, cy), 11 * s)
+                aa_circle(scr, ACCENT, (cx, cy), 9 * s)
 
         # home button
         hc, hr = spec["home"], spec["home_r"]
+        hp = on("ps")
+        if hp:
+            self.blit_c(self.halo(hr * s, ACCENT), P(*hc))
         if xbox:
-            outlined_circle(P(*hc), hr * s, ACCENT if on("ps") else mix(th["body"], (128, 128, 128), 0.25))
-            aa_ring(scr, white if on("ps") else ol, P(*hc), hr * 0.5 * s, max(1, int(2 * s + 0.5)))
+            self.blit_c(self.dome(hr * s, ACCENT if hp else (lighten(body, 0.04) if light else lighten(body, 0.10)), 1.2),
+                        P(*hc))
+            aa_ring(scr, white if hp else darken(body, 0.55) if light else lighten(body, 0.45), P(*hc), hr * 0.5 * s,
+                    max(1, int(2.2 * s + 0.5)))
         else:
-            outlined_circle(P(*hc), hr * s, ACCENT if on("ps") else mix(base, (128, 128, 128), 0.3))
+            self.blit_c(self.dome(hr * s, ACCENT if hp else lighten(base, 0.18)), P(*hc))
 
         # mic (DualSense) / share (Xbox Series)
         if spec["misc"]:
+            mx, my = spec["misc"]
             mw, mh = (spec.get("misc_w", 32), 10) if not xbox else (30, 16)
-            a, b = P(spec["misc"][0] - mw / 2 + mh / 2, spec["misc"][1]), P(spec["misc"][0] + mw / 2 - mh / 2, spec["misc"][1])
-            col = (MIC_ORANGE if not xbox else ACCENT) if on("mic") else (mix(base, (128, 128, 128), 0.35) if not xbox
-                                                                       else mix(th["body"], (128, 128, 128), 0.2))
-            if xbox:
-                aa_line(scr, ol, a, b, mh * s + 2 * lw)
-            aa_line(scr, col, a, b, mh * s)
+            pts = capsule((mx - mw / 2 + mh / 2, my), (mx + mw / 2 - mh / 2, my), mh / 2)
+            if on("mic"):
+                col = MIC_ORANGE if not xbox else ACCENT
+                shape("misc", pts, lighten(col, 0.2), darken(col, 0.15))
+            else:
+                c2 = lighten(base, 0.22) if not xbox else (darken(body, 0.08) if light else lighten(body, 0.10))
+                shape("misc", pts, lighten(c2, 0.1), darken(c2, 0.2))
 
         if not connected and not mini:
             cx, my = P(500, 540)
@@ -1405,15 +1906,15 @@ class App:
         if v > 0.002:
             rrect(self.screen, ACCENT, (x, y, max(6, int(w * v)), 6), 3)
 
-    # ---------------- sidebar ----------------
-    def icon(self, kind, c, col):
+    # ---------------- menu ----------------
+    def icon(self, kind, c, col, bg):
         scr = self.screen
         x, y = c
         if kind == "controller":
             k = 0.036
             aa_poly(scr, col, [(x + (px - 500) * k, y + (py - 370) * k) for px, py in DS5["body"][::3]])
             for sx in (-6, 6):
-                aa_circle(scr, RAILBG, (x + sx, y), 2.6)
+                aa_circle(scr, bg, (x + sx, y - 3), 2.4)
         elif kind == "details":
             for i, dy in enumerate((-7, 0, 7)):
                 aa_circle(scr, col, (x - 9, y + dy), 1.8)
@@ -1425,30 +1926,62 @@ class App:
                 tooth = (i // 3) % 2 == 0
                 pts.append((x + math.cos(a) * (11 if tooth else 8.5), y + math.sin(a) * (11 if tooth else 8.5)))
             aa_poly(scr, col, pts)
-            aa_circle(scr, RAILBG, (x, y), 3.6)
+            aa_circle(scr, bg, (x, y), 3.6)
+        elif kind == "design":  # paint palette
+            aa_circle(scr, col, (x, y), 11)
+            aa_circle(scr, bg, (x + 5, y + 6), 4)
+            for dx, dy in ((-5, -3), (0, -6), (5, -2), (-5, 4)):
+                aa_circle(scr, bg, (x + dx, y + dy), 1.7)
 
-    def draw_sidebar(self):
+    def draw_menu(self, dt):
+        """Slide-out menu opened by the three-line button."""
+        target = 1.0 if self.menu_open else 0.0
+        step = dt / 0.16
+        self.menu_t = min(target, self.menu_t + step) if target > self.menu_t else max(target, self.menu_t - step)
+        if self.menu_t <= 0.001:
+            return
         scr = self.screen
-        scr.fill(RAILBG, (0, 0, RAIL, H))
-        pygame.draw.line(scr, LINE, (RAIL - 1, 0), (RAIL - 1, H))
-        aa_circle(scr, ACCENT, (RAIL // 2, 36), 9)
-        aa_circle(scr, RAILBG, (RAIL // 2, 36), 4)
-        items = [("controller", "Controller", 96), ("details", "Details", 170), ("settings", "Settings", H - 92)]
-        for view, label, y in items:
-            r = pygame.Rect(8, y, RAIL - 16, 62)
-            hover = self.clickable(r, view)
+        e = 1 - (1 - self.menu_t) ** 3  # ease out
+        dim = pygame.Surface((W, H), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, int(130 * e)))
+        scr.blit(dim, (0, 0))
+        if self.menu_open:
+            self.ui = [(pygame.Rect(0, 0, W, H), "menu_close")]  # the page behind is not clickable
+        mw = 264
+        x0 = int(-mw + mw * e)
+        scr.fill(RAILBG, (x0, 0, mw, H))
+        pygame.draw.line(scr, LINE, (x0 + mw, 0), (x0 + mw, H))
+        # close button + name
+        r = pygame.Rect(x0 + 20, 18, 40, 40)
+        hover = self.menu_open and self.clickable(r, "menu_close")
+        if hover:
+            rrect(scr, SURFACE_2, r, 10)
+        for dy in (-7, 0, 7):
+            rrect(scr, TEXT, (r.centerx - 9, r.centery + dy - 1, 18, 3), 1)
+        self.text(self.f_h, "Controller Tester", (x0 + 76, 38), TEXT, "midleft")
+        items = [("controller", "Controller"), ("details", "Details"), ("design", "Design"), ("settings", "Settings")]
+        for i, (view, label) in enumerate(items):
+            r = pygame.Rect(x0 + 14, 86 + i * 58, mw - 28, 50)
+            hover = self.menu_open and self.clickable(r, view)
             active = self.view == view
+            bg = mix(RAILBG, ACCENT, 0.18) if active else (SURFACE_2 if hover else RAILBG)
+            if active or hover:
+                rrect(scr, bg, r, 12)
             if active:
-                rrect(scr, mix(RAILBG, ACCENT, 0.16), r, 12)
-            elif hover:
-                rrect(scr, SURFACE_2, r, 12)
+                rrect(scr, ACCENT, (r.x, r.y + 13, 4, r.h - 26), 2)
             col = ACCENT if active else (TEXT if hover else MUTED)
-            self.icon(view, (RAIL // 2, y + 22), col)
-            self.text(self.f_xs, label, (RAIL // 2, y + 48), col, "center")
+            self.icon(view, (r.x + 34, r.centery), col, bg)
+            self.text(self.f_menu, label, (r.x + 66, r.centery), TEXT if (active or hover) else MUTED, "midleft")
+        self.text(self.f_xs, "Tab  switches pages", (x0 + 28, H - 34), FAINT)
 
     # ---------------- header / footer ----------------
     def draw_header(self, title):
-        self.text(self.f_title, title, (32, 38), TEXT, "midleft")
+        r = pygame.Rect(24, 18, 40, 40)
+        hover = self.clickable(r, "menu")
+        rrect(self.screen, SURFACE_2 if hover else SURFACE, r, 10)
+        for dy in (-7, 0, 7):
+            rrect(self.screen, TEXT if hover else MUTED, (r.centerx - 9, r.centery + dy - 1, 18, 3), 1)
+        self.text(self.f_title, title, (80, 38), TEXT, "midleft")
         if self.joy:
             status = f"{self.joy.get_name()}  ·  {self.device_info()['conn']}"
             dot = GOOD
@@ -1595,17 +2128,8 @@ class App:
 
     def draw_settings(self, st):
         self.draw_header("Settings")
-        tabs = [("general", "General"), ("design", "Design"), ("lights", "Light bar")]
-        tabs_w = sum(self.f.size(lbl)[0] + 28 for _, lbl in tabs) + 8
-        self.segmented(32 + tabs_w, 70, tabs, self.settings_tab, "stab:")
-        if self.settings_tab == "design":
-            self.draw_design()
-            return
-        if self.settings_tab == "lights":
-            self.draw_lights()
-            return
         s = self.settings
-        top = 122
+        top = 84
         rows = 9
         self.panel((32, top, CW - 64, rows * 64 + 12))
         y = top + 6
@@ -1617,7 +2141,7 @@ class App:
                               "connects or disconnects")
         self.checkbox(rx - 22, y + 20, s["notify"], "notify_opt")
         y += 64
-        rx = self.setting_row(y, "Start with Windows", "Open DualSense Tester automatically when you sign in"
+        rx = self.setting_row(y, "Start with Windows", "Open Controller Tester automatically when you sign in"
                               if autostart_supported() else "Only available on Windows")
         self.checkbox(rx - 22, y + 20, self.autostart, "autostart", autostart_supported())
         y += 64
@@ -1643,109 +2167,114 @@ class App:
         self.button(rx, y + 14, "Reset", "reset", w=90)
 
     def draw_design(self):
+        self.draw_header("Design")
         s = self.settings
-        top = 122
         cur = self.model_key()
-        self.panel((32, top, CW - 64, 318), "Controller")
+        X, WD, top = 32, CW - 64, 80
+
+        # --- controller picker ---
+        self.panel((X, top, WD, 252), "Controller")
+        self.segmented(X + WD - 20, top + 9, [("image", "Artwork"), ("drawn", "Drawn")], s.get("style", "image"), "style:")
+        look_w = self.f.size("Artwork")[0] + self.f.size("Drawn")[0] + 64
+        lbl = "Match the connected controller"
+        lx = X + WD - 20 - look_w - 28 - self.f.size(lbl)[0]
+        self.text(self.f, lbl, (lx, top + 26), MUTED, "midleft")
+        self.checkbox(lx - 32, top + 15, s["auto_model"], "auto_model")
         gap = 16
-        cw = (CW - 64 - 40 - 3 * gap) // 4
-        x0 = 32 + 20
+        cw = (WD - 40 - 3 * gap) // 4
         for i, m in enumerate(MODEL_ORDER):
-            r = pygame.Rect(x0 + i * (cw + gap), top + 50, cw, 214)
+            r = pygame.Rect(X + 20 + i * (cw + gap), top + 54, cw, 182)
             hover = self.clickable(r, "model:" + m)
             selected = m == cur
             rrect(self.screen, BG if not hover else SURFACE_2, r, 12)
             if selected:
                 rrect(self.screen, ACCENT, r, 12, 2)
-            self.draw_controller(r.x + (cw - 220) // 2, r.y + 14, 0.22, None, m, mini=True)
-            self.text(self.f_h, MODELS[m]["name"], (r.x + 16, r.bottom - 44))
-            self.text(self.f_s, MODELS[m]["sub"], (r.x + 16, r.bottom - 24), MUTED)
+            self.draw_controller(r.x + (cw - 220) // 2, r.y + 2, 0.22, None, m, mini=True)
+            self.text(self.f_h, MODELS[m]["name"], (r.x + 16, r.bottom - 22), TEXT, "midleft")
             if selected:
-                aa_circle(self.screen, ACCENT, (r.right - 22, r.bottom - 30), 9)
-                aa_polyline(self.screen, (255, 255, 255), [(r.right - 26, r.bottom - 30), (r.right - 23, r.bottom - 27),
-                                                           (r.right - 18, r.bottom - 33)], 2)
-        cy = top + 280
-        self.checkbox(x0, cy, s["auto_model"], "auto_model")
-        self.text(self.f, "Match the connected controller automatically", (x0 + 34, cy + 11), TEXT, "midleft")
+                aa_circle(self.screen, ACCENT, (r.right - 22, r.bottom - 22), 9)
+                aa_polyline(self.screen, (255, 255, 255), [(r.right - 26, r.bottom - 22), (r.right - 23, r.bottom - 19),
+                                                           (r.right - 18, r.bottom - 25)], 2)
 
-        y = top + 334
-        self.panel((32, y, CW - 64, 140), "Colour")
-        themes = MODELS[cur]["themes"]
-        ci = self.colour_index(cur)
-        for i, (tname, th) in enumerate(themes):
-            cx = x0 + 34 + i * 220
-            c = (cx, y + 82)
-            hover = self.clickable((cx - 30, y + 48, 130, 70), f"colour:{i}")
-            if i == ci:
-                aa_ring(self.screen, ACCENT, c, 27, 3)
-            elif hover:
-                aa_ring(self.screen, FAINT, c, 27, 2)
-            aa_circle(self.screen, outline_col(th), c, 21)
-            aa_circle(self.screen, th["body"], c, 19)
-            if th.get("panel"):
-                aa_circle(self.screen, th["panel"], (cx, y + 90), 9)
-            self.text(self.f, tname, (cx + 38, y + 82), TEXT if i == ci else MUTED, "midleft")
-        self.text(self.f_s, "Tip: press T to cycle colours and M to cycle controller models from any page",
-                  (CW / 2, H - 22), FAINT, "center")
+        # --- light bar (left) and colour (right) ---
+        y = top + 268
+        ph = H - 28 - y
+        cw2 = 300
+        lw = WD - cw2 - 16
+        self.draw_light_panel(X, y, lw, ph)
 
-    def draw_lights(self):
+        cx0 = X + lw + 16
+        self.panel((cx0, y, cw2, ph), "Controller colour")
+        if self.use_photo(cur):
+            self.text(self.f_s, "Colours are for the Drawn look.", (cx0 + 20, y + 52), MUTED)
+            self.text(self.f_s, "This controller is using your artwork.", (cx0 + 20, y + 70), MUTED)
+        else:
+            ci = self.colour_index(cur)
+            for i, (tname, th) in enumerate(MODELS[cur]["themes"]):
+                row = pygame.Rect(cx0 + 10, y + 46 + i * 54, cw2 - 20, 48)
+                hover = self.clickable(row, f"colour:{i}")
+                if i == ci:
+                    rrect(self.screen, mix(SURFACE, ACCENT, 0.14), row, 10)
+                elif hover:
+                    rrect(self.screen, SURFACE_2, row, 10)
+                c = (row.x + 30, row.centery)
+                aa_circle(self.screen, outline_col(th), c, 16)
+                aa_circle(self.screen, th["body"], c, 14)
+                if th.get("panel"):
+                    aa_circle(self.screen, th["panel"], (c[0], c[1] + 6), 6)
+                self.text(self.f, tname, (row.x + 60, row.centery), TEXT if i == ci else MUTED, "midleft")
+
+    def draw_light_panel(self, X, y, w, h):
         s = self.settings
-        top = 122
-        x0, w = 32, CW - 64
-        self.panel((x0, top, w, 96))
-        self.text(self.f_h, "Control the light bar", (x0 + 24, top + 22))
+        self.panel((X, y, w, h), "Light bar")
         ok, msg = self.led_status()
-        self.text(self.f_s, msg, (x0 + 24, top + 46), MUTED if ok or self.joy is None else WARN)
-        self.text(self.f_s, "Works with DualSense and DualShock 4 over USB and Bluetooth",
-                  (x0 + 24, top + 66), FAINT)
-        self.checkbox(x0 + w - 46, top + 36, s["led_on"], "led_on")
+        self.text(self.f_s, msg, (X + 104, y + 25), MUTED if ok or self.joy is None else WARN, "midleft")
+        self.checkbox(X + w - 42, y + 14, s["led_on"], "led_on")
+        self.text(self.f, "On", (X + w - 52, y + 25), MUTED, "midright")
 
-        y = top + 112
-        self.panel((x0, y, w, H - 32 - y))
         # live preview
-        cx, cy = x0 + 150, y + 150
+        cx, cy = X + 96, y + 60 + (h - 60) // 2 - 16
         c = self.led_now if s["led_on"] else (60, 64, 74)
-        aa_circle(self.screen, mix(SURFACE, c, 0.25), (cx, cy), 92)
-        aa_circle(self.screen, mix(SURFACE, c, 0.5), (cx, cy), 78)
-        aa_circle(self.screen, c, (cx, cy), 62)
+        aa_circle(self.screen, mix(SURFACE, c, 0.25), (cx, cy), 68)
+        aa_circle(self.screen, mix(SURFACE, c, 0.5), (cx, cy), 57)
+        aa_circle(self.screen, c, (cx, cy), 45)
         hexcol = "#%02X%02X%02X" % tuple(s["led_color"])
-        label = {"static": hexcol, "breathe": f"{hexcol}  breathing", "rainbow": "Rainbow"}[s["led_effect"]]
-        self.text(self.f_h, label if s["led_on"] else "Off", (cx, cy + 118), TEXT, "center")
-        self.text(self.f_s, "Preview", (cx, y + 28), MUTED, "center")
+        label = {"static": hexcol, "breathe": hexcol, "rainbow": "Rainbow"}[s["led_effect"]]
+        self.text(self.f_h, label if s["led_on"] else "Off", (cx, cy + 90), TEXT, "center")
 
-        lx = x0 + 330
-        self.text(self.f_h, "Colour", (lx, y + 24))
+        lx = X + 200
         for i, (name, col) in enumerate(LED_PRESETS):
-            pc = (lx + 20 + i * 56, y + 74)
-            hover = self.clickable((pc[0] - 24, pc[1] - 24, 48, 48), f"ledpreset:{i}")
+            pc = (lx + 18 + i * 50, y + 76)
+            hover = self.clickable((pc[0] - 22, pc[1] - 22, 44, 44), f"ledpreset:{i}")
             if tuple(s["led_color"]) == col and s["led_effect"] != "rainbow":
-                aa_ring(self.screen, TEXT, pc, 24, 2)
+                aa_ring(self.screen, TEXT, pc, 21, 2)
             elif hover:
-                aa_ring(self.screen, FAINT, pc, 24, 2)
-            aa_circle(self.screen, col, pc, 18)
+                aa_ring(self.screen, FAINT, pc, 21, 2)
+            aa_circle(self.screen, col, pc, 16)
 
-        sy = y + 140
-        sw = w - (lx - x0) - 120
+        sy = y + 128
+        sw = w - 200 - 80
         for i, (key, label, col, val) in enumerate((
                 ("r", "Red", (240, 70, 70), s["led_color"][0] / 255),
                 ("g", "Green", (60, 200, 100), s["led_color"][1] / 255),
                 ("b", "Blue", (70, 130, 250), s["led_color"][2] / 255),
                 ("bri", "Brightness", ACCENT, s["led_brightness"]))):
-            ry = sy + i * 46
+            ry = sy + i * 40
             self.text(self.f, label, (lx, ry), TEXT, "midleft")
-            self.slider(lx + 100, ry, sw - 100, val, key, col)
+            self.slider(lx + 96, ry, sw - 96, val, key, col)
             shown = f"{int(val * 100)}%" if key == "bri" else str(s["led_color"]["rgb".index(key)])
-            self.text(self.f_ms, shown, (lx + sw + 50, ry), MUTED, "midright")
+            self.text(self.f_ms, shown, (lx + sw + 56, ry), MUTED, "midright")
 
-        ey = sy + 4 * 46 + 16
-        self.text(self.f_h, "Effect", (lx, ey + 17), TEXT, "midleft")
+        ey = sy + 4 * 40 + 4
+        self.text(self.f, "Effect", (lx, ey + 17), TEXT, "midleft")
         opts = [("static", "Static"), ("breathe", "Breathing"), ("rainbow", "Rainbow")]
         ow = sum(self.f.size(l)[0] + 28 for _, l in opts) + 8
-        self.segmented(lx + 100 + ow, ey, opts, s["led_effect"], "ledfx:")
-        self.text(self.f_s, "The colour stays while DualSense Tester is open. When you turn this off the "
-                            "light goes back to blue.", (lx, ey + 58), FAINT)
+        self.segmented(lx + 96 + ow, ey, opts, s["led_effect"], "ledfx:")
+        self.text(self.f_xs, "The colour holds while the app is open (also in the tray).", (lx, ey + 52), FAINT)
 
     def draw(self, now):
+        dt = min(0.1, now - getattr(self, "_last_draw", now))
+        self._last_draw = now
         self.ui = []
         st = self.read_state() if self.joy else None
         self.update_stats(st, now)
@@ -1756,6 +2285,8 @@ class App:
             self.draw_details(st)
         elif self.view == "settings":
             self.draw_settings(st)
+        elif self.view == "design":
+            self.draw_design()
         else:
             self.draw_main(st)
         msg, until = self.toast
@@ -1767,7 +2298,7 @@ class App:
             self.text(self.f, msg, r.center, TEXT, "center")
         self.real.blit(self.content, (RAIL, 0))
         self.screen, self.off = self.real, (0, 0)
-        self.draw_sidebar()
+        self.draw_menu(dt)
 
 
 def resource(name):
