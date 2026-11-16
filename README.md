@@ -104,3 +104,8 @@ Create Desktop Shortcut.bat  builds the .exe and makes the desktop shortcut
 requirements.txt             Python packages
 docs/screenshots/            images used in this README
 ```
+
+## License
+Released under the [MIT License](LICENSE) (c) 2026 abdulrahman7a1.
+
+Third-party libraries keep their own licenses: pygame-ce (LGPL-2.1, GNU Lesser General Public License), pystray (LGPL-3.0) and Pillow (MIT-CMU). PlayStation, DualSense and DualShock are trademarks of Sony Interactive Entertainment; Xbox is a trademark of Microsoft. This project is not affiliated with either company.
